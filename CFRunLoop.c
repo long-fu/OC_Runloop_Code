@@ -2326,7 +2326,7 @@ static void __CFRunLoopTimeout(void *arg) {
     CFRunLoopWakeUp(context->rl);
     // The interval is DISPATCH_TIME_FOREVER, so this won't fire again
 }
-
+// MARK: runloop运行阶段
 /* rl, rlm are locked on entrance and exit */
 static int32_t __CFRunLoopRun(CFRunLoopRef rl, CFRunLoopModeRef rlm, CFTimeInterval seconds, Boolean stopAfterHandle, CFRunLoopModeRef previousMode) {
     uint64_t startTSR = mach_absolute_time();

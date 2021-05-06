@@ -355,7 +355,7 @@ static const CFRuntimeClass __CFArrayClass = {
     NULL,	// 
     __CFArrayCopyDescription
 };
-
+// 注册元类 返回元类注册的 type值
 CFTypeID CFArrayGetTypeID(void) {
     static dispatch_once_t initOnce;
     dispatch_once(&initOnce, ^{ __kCFArrayTypeID = _CFRuntimeRegisterClass(&__CFArrayClass); });

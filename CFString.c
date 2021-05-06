@@ -1206,6 +1206,7 @@ static const CFRuntimeClass __CFStringClass = {
     __CFStringCopyDescription
 };
 
+// 单例来进行元类的注册
 CF_PRIVATE void __CFStringInitialize(void) {
     static dispatch_once_t initOnce;
     dispatch_once(&initOnce, ^{ __kCFStringTypeID = _CFRuntimeRegisterClass(&__CFStringClass); });

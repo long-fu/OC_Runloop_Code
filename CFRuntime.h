@@ -83,7 +83,8 @@ enum { // Version field constants
     _kCFRuntimeCustomRefCount =    (1UL << 3),  // tells CFRuntime to make use of the refcount field
     _kCFRuntimeRequiresAlignment = (1UL << 4),  // tells CFRuntime to make use of the requiredAlignment field
 };
-//MARK: CF -- RunTimme部分
+
+//MARK: CF -- RunTimme部分 面向对象实现 面向对象 对象管理部分 在系统中怎么管理这个对象
 typedef struct __CFRuntimeClass {
     CFIndex version;
     const char *className; // must be a pure ASCII string, nul-terminated
@@ -101,6 +102,7 @@ typedef struct __CFRuntimeClass {
 
 // 内存引用计数 - 函数
 #define CF_REFCOUNT_AVAILABLE 1
+	// 在_CFRetain refcount(+1, cf);
     uint32_t (*refcount)(intptr_t op, CFTypeRef cf); // Or in _kCFRuntimeCustomRefCount in the .version to indicate this field should be used
         // this field must be non-NULL when _kCFRuntimeCustomRefCount is in the .version field
         // - if the callback is passed 1 in 'op' it should increment the 'cf's reference count and return 0
@@ -324,6 +326,8 @@ CF_EXPORT void _CFRuntimeUnregisterClassWithTypeID(CFTypeID typeID);
 	 * be quite sure all instances are gone, and there are no
 	 * valid weak refs to such in other threads.
 	 */
+
+// 对象部分
 
 /* All CF "instances" start with this structure.  Never refer to
  * these fields directly -- they are for CF's use and may be added

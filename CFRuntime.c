@@ -198,10 +198,15 @@ static const CFRuntimeClass __CFTypeClass = {
 };
 #endif //__cplusplus
 
+// 注册元类的适合需要进行加锁 来保证线程安全
 // the lock does not protect most reading of these; we just leak the old table to allow read-only accesses to continue to work
 static CFLock_t __CFBigRuntimeFunnel = CFLockInit;
+
+// CF所有类的元类注册列表 (index就是CFTypeID)
 CF_PRIVATE CFRuntimeClass * __CFRuntimeClassTable[__CFRuntimeClassTableSize] = {0};
+// 纪录当前注册类多少 个数据
 CF_PRIVATE int32_t __CFRuntimeClassTableCount = 0;
+
 
 CF_PRIVATE uintptr_t __CFRuntimeObjCClassTable[__CFRuntimeClassTableSize] = {0};
 
@@ -230,6 +235,8 @@ Boolean _CFIsObjC(CFTypeID typeID, void *obj) {
     return CF_IS_OBJC(typeID, obj);
 }
 
+// 系统基础函数 列表
+
 CFTypeID _CFRuntimeRegisterClass(const CFRuntimeClass * const cls) {
 // className must be pure ASCII string, non-null
     if ((cls->version & _kCFRuntimeCustomRefCount) && !cls->refcount) {
@@ -237,6 +244,7 @@ CFTypeID _CFRuntimeRegisterClass(const CFRuntimeClass * const cls) {
        return _kCFRuntimeNotATypeID;
     }
     __CFLock(&__CFBigRuntimeFunnel);
+    //  65535
     if (__CFMaxRuntimeTypes <= __CFRuntimeClassTableCount) {
 	CFLog(kCFLogLevelWarning, CFSTR("*** CoreFoundation class table full; registration failing for class '%s'.  Program will crash soon."), cls->className);
         __CFUnlock(&__CFBigRuntimeFunnel);
@@ -898,6 +906,8 @@ static
 #if DEPLOYMENT_TARGET_WINDOWS
 CF_EXPORT
 #endif
+
+// MARK: 初始化系统CFRuntime
 void __CFInitialize(void) {
 
     if (!__CFInitialized && !__CFInitializing) {
@@ -981,6 +991,7 @@ void __CFInitialize(void) {
         __CFRuntimeClassTableCount = 7;
         __CFStringInitialize();		// CFString's TypeID must be 0x7, now and forever
     
+       // 从16开始存储数据
         __CFRuntimeClassTableCount = 16;
         CFNullGetTypeID();		// See above for hard-coding of this position
         CFSetGetTypeID();		// See above for hard-coding of this position
@@ -1202,13 +1213,21 @@ static bool (*CAS64)(int64_t, int64_t, volatile int64_t *) = OSAtomicCompareAndS
 static bool (*CAS32)(int32_t, int32_t, volatile int32_t *) = OSAtomicCompareAndSwap32Barrier;
 #endif
 
+// 强引用，内存引用计数
 // For "tryR==true", a return of NULL means "failed".
 static CFTypeRef _CFRetain(CFTypeRef cf, Boolean tryR) {
+
+    // 对象指向的地址
     uint32_t cfinfo = *(uint32_t *)&(((CFRuntimeBase *)cf)->_cfinfo);
+
     if (cfinfo & 0x800000) { // custom ref counting for object
         if (tryR) return NULL;
+        
+        // TODO: 这里的逻辑不懂 反正就是找到元类注册的index
         CFTypeID typeID = (cfinfo >> 8) & 0x03FF; // mask up to 0x0FFF
+        
         CFRuntimeClass *cfClass = __CFRuntimeClassTable[typeID];
+
         uint32_t (*refcount)(intptr_t, CFTypeRef) = cfClass->refcount;
         if (!refcount || !(cfClass->version & _kCFRuntimeCustomRefCount) || (((CFRuntimeBase *)cf)->_cfinfo[CF_RC_BITS] != 0xFF)) {
             HALT; // bogus object

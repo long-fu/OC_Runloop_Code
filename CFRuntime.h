@@ -83,7 +83,7 @@ enum { // Version field constants
     _kCFRuntimeCustomRefCount =    (1UL << 3),  // tells CFRuntime to make use of the refcount field
     _kCFRuntimeRequiresAlignment = (1UL << 4),  // tells CFRuntime to make use of the requiredAlignment field
 };
-
+//MARK: CF -- RunTimme部分
 typedef struct __CFRuntimeClass {
     CFIndex version;
     const char *className; // must be a pure ASCII string, nul-terminated
@@ -95,9 +95,11 @@ typedef struct __CFRuntimeClass {
     CFStringRef (*copyFormattingDesc)(CFTypeRef cf, CFDictionaryRef formatOptions);	// return str with retain
     CFStringRef (*copyDebugDesc)(CFTypeRef cf);	// return str with retain
 
+// 获取类型 分配内存
 #define CF_RECLAIM_AVAILABLE 1
     void (*reclaim)(CFTypeRef cf); // Or in _kCFRuntimeResourcefulObject in the .version to indicate this field should be used
 
+// 内存引用计数 - 函数
 #define CF_REFCOUNT_AVAILABLE 1
     uint32_t (*refcount)(intptr_t op, CFTypeRef cf); // Or in _kCFRuntimeCustomRefCount in the .version to indicate this field should be used
         // this field must be non-NULL when _kCFRuntimeCustomRefCount is in the .version field
@@ -109,11 +111,34 @@ typedef struct __CFRuntimeClass {
         // objects should be created/initialized with a custom ref-count of 1 by the class creation functions
         // do not attempt to use any bits within the CFRuntimeBase for your reference count; store that in some additional field in your CF object
 
+		/*
+		//当_kCFRuntimeCustomRefCount在.version字段中时，此字段必须为非NULL
+        //-如果回调在'op'中传递1，则应增加'cf'的引用计数并返回0
+        //-如果回调在'op'中传递0，则应返回'cf'的引用计数，最多32位
+
+        //-如果回调在'op'中传递-1，则应减少'cf'的引用计数；
+		如果现在为零，则应清理并释放'cf'
+		（除非该进程在GC下运行，并且CF不会为您分配内存，否则不会调用上述finalize回调；
+		如果在GC下运行，则finalize应该执行拆除对象并释放对象内存）；
+		然后返回0
+  
+        //记住使用饱和度算术逻辑，并在ref计数达到UINT32_MAX时停止递增和递减，否则您将遇到安全漏洞
+        //请记住，引用计数的递增/递减必须是线程安全/原子方式进行的
+        //对象应由类创建函数使用自定义引用计数1创建/初始化
+        //不要尝试将CFRuntimeBase中的任何位用于您的引用计数；将其存储在CF对象的其他字段中
+		*/
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #define CF_REQUIRED_ALIGNMENT_AVAILABLE 1
+	// 结构体对其
     uintptr_t requiredAlignment; // Or in _kCFRuntimeRequiresAlignment in the .version field to indicate this field should be used; the allocator to _CFRuntimeCreateInstance() will be ignored in this case; if this is less than the minimum alignment the system supports, you'll get higher alignment; if this is not an alignment the system supports (e.g., most systems will only support powers of two, or if it is too high), the result (consequences) will be up to CF or the system to decide
-
+    /*
+	或在.version字段中的_kCFRuntimeRequiresAlignment中，指示应使用此字段； 
+	在这种情况下，_CFRuntimeCreateInstance（）的分配器将被忽略； 
+	如果这小于系统支持的最小对齐方式，则将获得更高的对齐方式； 
+	如果这不是系统支持的对齐方式（例如，大多数系统仅支持2的幂，或者如果它太高），则结果（结果）将取决于CF或系统决定
+	*/
 } CFRuntimeClass;
 
 #define RADAR_5115468_FIXED 1
@@ -122,6 +147,12 @@ typedef struct __CFRuntimeClass {
  * thread-safe, which should not currently be a problem, as long as unregistration
  * is done only when valid to do so.
  */
+
+/*
+/ *请注意，CF运行时类的注册和注销当前不是
+  *线程安全，只要不注册，当前就不成问题
+  *仅在有效时才这样做。
+  */
 
 CF_EXPORT CFTypeID _CFRuntimeRegisterClass(const CFRuntimeClass * const cls);
 	/* Registers a new class with the CF runtime.  Pass in a
@@ -196,6 +227,87 @@ CF_EXPORT CFTypeID _CFRuntimeRegisterClass(const CFRuntimeClass * const cls);
 	 * like strings or numbers, where it makes sense to format
 	 * the instance using just its contents.
 	 */
+
+	/*
+	/ *在CF运行时中注册一个新类。传递一个
+*指向CFRuntimeClass结构的指针。指针是
+*由CF运行时记住-结构不是
+*复制。
+*
+*-version 字段当前必须为零。
+
+*-className字段指向以N结尾的C字符串
+*仅包含ASCII（0-127）字符；这个领域
+*不能为NULL。
+
+*-init 字段指向类可以使用的函数
+*对实例应用一些通用的初始化
+*已创建；这两个函数都被调用
+* _CFRuntimeCreateInstance和_CFRuntimeInitInstance；如果
+*该字段为NULL，不调用任何函数；实例
+*已经足够初始化，以至于多态函数
+* CFGetTypeID（），CFRetain（），CFRelease（），CFGetRetainCount（），
+*和CFGetAllocator（）在初始化时对它有效
+*函数（如果有的话）。
+         *-copy 字段应始终为NULL。 CF的通用复制
+         *对象从未被定义（并且是不可能的）。
+
+*- finalize 确定一个指向破坏函数的字段
+*保留计数降至零的实例；如果
+*这是NULL，完成不做任何事情。请注意，如果
+*创建或初始化的特定于类的函数
+*实例更充分地决定将其初始化为一半
+*实例必须销毁，finalize函数适用
+*该类必须能够处理半初始化
+*实例。 finalize函数不应破坏
+*实例本身的内存；这是由
+*此最终完成的调用返回后的CF运行时。
+
+*-equal 字段指向相等性测试函数；这
+*字段可以为NULL，在这种情况下，仅指针/引用
+*在此类的实例上执行相等操作。
+*测试指针相等性，并检查类型ID
+*对于相等性，在调用此函数之前（因此，
+*两个实例不是指针相等的，但具有相同的指针
+*调用此函数之前的类）。
+*注意：equal函数必须实现一个不可变的
+*平等关系，满足反身，对称，
+*和传递属性，并且在整个过程中保持不变
+*时间和不变操作（即如果等于（A，B）
+*有一点，后来等于（A，B）都不提供
+* A或B已突变）。
+
+*-hash 字段指向用于
+*此类的实例；该字段可以为NULL，其中
+*如果实例的指针值转换为
+*哈希。
+*注意：哈希函数和均等函数必须满足
+*关系“ equal（A，B）意味着hash（A）== hash（B）”；
+*也就是说，如果两个实例相等，则其哈希码必须
+*也要平等。 （但是，事实并非如此！）
+
+*-copyFormattingDesc字段指向一个返回a的函数
+* CFStringRef带有人类可读的描述
+*   实例;如果为NULL，则类型没有特殊
+*人类可读的字符串格式。
+
+*-copyDebugDesc字段指向一个返回a的函数
+* CFStringRef带有实例的调试描述；
+*如果为NULL，则生成一个简单的描述。
+*
+*此函数在失败时返回_kCFRuntimeNotATypeID，或者
+*成功时，返回新类的CFTypeID。这
+* CFTypeID是类用来分配或初始化的
+*类的实例。它也从
+*常规* GetTypeID（）函数，该函数返回
+*类的CFTypeID，以便客户端可以比较
+*具有类实例的CFTypeID。
+*
+*计算人类可读字符串的功能非常强大
+*是可选的，并且实际上仅对类感兴趣，
+*像字符串或数字一样，在格式上有意义
+*仅使用实例内容的实例。
+	*/
 
 CF_EXPORT const CFRuntimeClass * _CFRuntimeGetClassWithTypeID(CFTypeID typeID);
 	/* Returns the pointer to the CFRuntimeClass which was
